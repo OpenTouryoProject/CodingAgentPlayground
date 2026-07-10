@@ -1,0 +1,4 @@
+# Built frontend assets are copied here during the build; do not commit them.
+*
+!.gitignore
+!.gitkeep

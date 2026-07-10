@@ -1,4 +1,5 @@
 # Project Management MVP
+元ネタ：https://github.com/ed-donner/pm
 
 ログイン付きの Kanban ボードと、ボードを操作できる AI チャットを備えた MVP です。
 単一の Docker コンテナで動作します（FastAPI が API と静的フロントを配信）。
