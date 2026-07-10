@@ -9,6 +9,7 @@
 | `start.sh` / `stop.sh` | Mac / Linux（および WSL2 内の bash） | Docker でビルド・起動 / 停止 |
 | `start.ps1` / `stop.ps1` | Windows（**ホスト側に docker CLI がある**環境） | 同上。`docker` コマンドを直接呼ぶ |
 | `start_wsl2.ps1` / `stop_wsl2.ps1` | Windows（**Docker が WSL2 内**にある環境） | PowerShell から **WSL 経由**で `start.sh` / `stop.sh` を実行 |
+| `reset_db_wsl2.ps1` | Windows（同上） | DB（`pm-data` ボリューム）を削除してカンバンを初期状態に戻し、再起動 |
 
 `start` はイメージ `pm-app` をビルドし、既存コンテナを削除してから新規起動します。ポート 8000 を公開し、ルートの `.env` を `--env-file` で渡し、名前付きボリューム `pm-data` を SQLite データディレクトリにマウントします（ボード内容がコンテナ再作成をまたいで永続化）。起動後は http://localhost:8000 で利用できます。`stop` はコンテナを削除します（`pm-data` は保持）。
 
@@ -123,6 +124,37 @@ wsl.exe : WARNING: No blkio throttle.read_bps_device support
 **原因**: **Windows PowerShell 5.1** は、BOM の無い `.ps1` を UTF-8 ではなくシステム ANSI コードページ（日本語環境では CP932）として読み込みます。そのためファイル内の日本語文字列リテラルが誤解釈されて化けます（動作自体には影響しません）。
 
 **解決**: `start_wsl2.ps1` / `stop_wsl2.ps1` を **UTF-8 (BOM 付き)** で保存済みです。日本語を含む `.ps1` を編集する際は、BOM 付き UTF-8 を維持してください（BOM が外れると再発します）。PowerShell 7 (`pwsh`) は BOM 無し UTF-8 でも正しく読めます。
+
+---
+
+## DB（ボード）の初期化
+
+ボード内容は SQLite ファイル `/app/backend/app/data/app.db` に保存され、名前付きボリューム **`pm-data`** に永続化されます（停止・再作成しても残ります）。`init_db()` は `CREATE TABLE IF NOT EXISTS` なので既存データは消えません。**初期化＝永続化された DB を消す**ことです。消すと次回ログイン時に初期ボードが再投入されます。
+
+### 方法A: スクリプトで一発（推奨）
+
+```powershell
+.\scripts\reset_db_wsl2.ps1          # 確認プロンプトあり
+.\scripts\reset_db_wsl2.ps1 -Force   # 確認なし
+```
+
+停止 → `pm-data` 削除 → 再起動 まで行います。
+
+### 方法B: 手動
+
+- ボリュームごと削除（完全初期化）:
+
+  ```powershell
+  .\scripts\stop_wsl2.ps1
+  wsl bash -lc "docker volume rm pm-data"
+  .\scripts\start_wsl2.ps1
+  ```
+
+- `app.db` だけ削除（ボリュームは残す・手早い）:
+
+  ```powershell
+  wsl bash -lc "docker exec pm-app rm -f /app/backend/app/data/app.db && docker restart pm-app"
+  ```
 
 ---
 
