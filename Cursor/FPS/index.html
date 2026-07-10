@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>アリーナ FPS</title>
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="overlay">
+    <div id="start-screen">
+      <h1>アリーナ FPS</h1>
+      <p class="subtitle">1対1 コンピュータ対戦</p>
+      <div class="controls">
+        <h2>操作方法</h2>
+        <ul>
+          <li><kbd>↑</kbd> 前進</li>
+          <li><kbd>↓</kbd> 後退</li>
+          <li><kbd>←</kbd> 左回転</li>
+          <li><kbd>→</kbd> 右回転</li>
+          <li><kbd>Space</kbd> 発砲</li>
+        </ul>
+      </div>
+      <button id="start-btn">バトル開始</button>
+    </div>
+
+    <div id="hud" class="hidden">
+      <div id="crosshair">+</div>
+      <div id="health-bar">
+        <span>HP</span>
+        <div class="bar-bg"><div id="player-hp" class="bar-fill"></div></div>
+      </div>
+      <div id="enemy-hud">
+        <span>敵 HP</span>
+        <div class="bar-bg"><div id="enemy-hp" class="bar-fill enemy"></div></div>
+      </div>
+      <div id="ammo">弾薬: <span id="ammo-count">∞</span></div>
+    </div>
+
+    <div id="game-over" class="hidden">
+      <h1 id="result-title">勝利!</h1>
+      <p id="result-message"></p>
+      <button id="restart-btn">もう一度</button>
+    </div>
+  </div>
+
+  <canvas id="game-canvas"></canvas>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://cdn.jsdelivr.net/npm/three@0.162.0/build/three.module.js",
+      "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.162.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module" src="js/game.js"></script>
+</body>
+</html>
