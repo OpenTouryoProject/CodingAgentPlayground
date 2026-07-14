@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Data;
+using System.Data.SqlClient;
 using System.Windows.Forms;
 
 namespace NorthwindWinForms
@@ -754,8 +755,67 @@ namespace NorthwindWinForms
 
         private void ShowError(Exception ex)
         {
-            MessageBox.Show(ex.Message, "エラー",
+            string message;
+
+            if (ex is DBConcurrencyException)
+            {
+                // ステップ7-2: 同時更新の競合
+                message = ex.Message + Environment.NewLine +
+                    "最新のデータを再読み込みしてから、もう一度操作してください。";
+            }
+            else if (ex is SqlException)
+            {
+                SqlException sqlEx = (SqlException)ex;
+                if (sqlEx.Number == 2627 || sqlEx.Number == 2601)
+                {
+                    // 主キー/一意制約違反（明細商品の重複など）
+                    message = "同じ商品が重複しています。明細の商品を確認してください。";
+                }
+                else if (IsConnectionError(sqlEx.Number))
+                {
+                    // ステップ7-1: DB接続エラー → 再試行を促す
+                    message = "データベースに接続できませんでした。" + Environment.NewLine +
+                        "接続状態を確認して、もう一度お試しください。" + Environment.NewLine +
+                        "詳細: " + sqlEx.Message;
+                }
+                else
+                {
+                    message = "データベースエラーが発生しました。" + Environment.NewLine + sqlEx.Message;
+                }
+            }
+            else
+            {
+                message = ex.Message;
+            }
+
+            MessageBox.Show(message, "エラー",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        /// <summary>
+        /// SqlException のエラー番号が接続系の障害かどうかを判定する。
+        /// </summary>
+        private static bool IsConnectionError(int number)
+        {
+            switch (number)
+            {
+                case -2:     // タイムアウト
+                case 2:      // ネットワーク関連
+                case 53:     // サーバーが見つからない
+                case 40:     // 接続できない
+                case 233:    // 接続を確立できない
+                case 258:    // 待機タイムアウト
+                case 10053:  // 接続中断
+                case 10054:  // 接続リセット
+                case 10060:  // 接続タイムアウト
+                case 10061:  // 接続拒否
+                case 11001:  // ホスト不明
+                case 4060:   // データベースを開けない
+                case 18456:  // ログイン失敗
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private void Warn(string message)

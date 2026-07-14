@@ -213,7 +213,14 @@ namespace NorthwindWinForms
             {
                 AddHeaderParameters(command, row);
                 command.Parameters.AddWithValue("@OrderID", row["OrderID"]);
-                command.ExecuteNonQuery();
+                int affected = command.ExecuteNonQuery();
+                if (affected == 0)
+                {
+                    // 更新対象が存在しない = 他ユーザーによる削除など同時更新の競合
+                    throw new DBConcurrencyException(
+                        "受注情報の更新に失敗しました。対象の受注が存在しません" +
+                        "（他のユーザーによって削除された可能性があります）。");
+                }
             }
         }
 
@@ -296,7 +303,14 @@ namespace NorthwindWinForms
                 command.Parameters.AddWithValue("@Discount", row["Discount"]);
                 command.Parameters.AddWithValue("@OrderID", row["OrderID", DataRowVersion.Original]);
                 command.Parameters.AddWithValue("@ProductID", row["ProductID", DataRowVersion.Original]);
-                command.ExecuteNonQuery();
+                int affected = command.ExecuteNonQuery();
+                if (affected == 0)
+                {
+                    // 更新対象の明細が存在しない = 同時更新の競合
+                    throw new DBConcurrencyException(
+                        "受注明細の更新に失敗しました。対象の明細が存在しません" +
+                        "（他のユーザーによって削除された可能性があります）。");
+                }
             }
         }
 
