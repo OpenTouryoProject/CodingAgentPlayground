@@ -107,6 +107,95 @@ namespace NorthwindWinForms
         }
 
         /// <summary>
+        /// 受注情報と受注明細を単一トランザクションで新規登録（INSERT）する。
+        /// Orders は IDENTITY 採番のため OrderID は指定せず、採番された OrderID を
+        /// 各明細に適用して登録する。
+        /// </summary>
+        /// <param name="orderRow">登録する受注情報を保持する DataRow（OrderID は使用しない）</param>
+        /// <param name="orderDetails">受注明細の DataTable（削除済みを除く全行を登録）</param>
+        /// <returns>採番された新しい受注ID</returns>
+        public static int InsertOrder(DataRow orderRow, DataTable orderDetails)
+        {
+            if (orderRow == null)
+            {
+                throw new ArgumentNullException("orderRow");
+            }
+            if (orderDetails == null)
+            {
+                throw new ArgumentNullException("orderDetails");
+            }
+
+            using (SqlConnection connection = DbHelper.CreateConnection())
+            {
+                connection.Open();
+                using (SqlTransaction transaction = connection.BeginTransaction())
+                {
+                    try
+                    {
+                        int newOrderId = InsertOrderHeader(connection, transaction, orderRow);
+                        InsertAllDetails(connection, transaction, newOrderId, orderDetails);
+                        transaction.Commit();
+                        return newOrderId;
+                    }
+                    catch
+                    {
+                        transaction.Rollback();
+                        throw;
+                    }
+                }
+            }
+        }
+
+        /// <summary>
+        /// 受注情報（Orders テーブル）を INSERT し、採番された OrderID を返す。
+        /// </summary>
+        private static int InsertOrderHeader(SqlConnection connection, SqlTransaction transaction, DataRow row)
+        {
+            const string sql =
+                "INSERT INTO Orders " +
+                "  (CustomerID, EmployeeID, OrderDate, RequiredDate, ShippedDate, " +
+                "   ShipVia, Freight, ShipName, ShipAddress, ShipCity, ShipRegion, ShipPostalCode, ShipCountry) " +
+                "VALUES " +
+                "  (@CustomerID, @EmployeeID, @OrderDate, @RequiredDate, @ShippedDate, " +
+                "   @ShipVia, @Freight, @ShipName, @ShipAddress, @ShipCity, @ShipRegion, @ShipPostalCode, @ShipCountry); " +
+                "SELECT CAST(SCOPE_IDENTITY() AS int);";
+
+            using (SqlCommand command = new SqlCommand(sql, connection, transaction))
+            {
+                AddHeaderParameters(command, row);
+                return (int)command.ExecuteScalar();
+            }
+        }
+
+        /// <summary>
+        /// 受注明細（削除済みを除く全行）を、指定の OrderID で INSERT する。
+        /// </summary>
+        private static void InsertAllDetails(SqlConnection connection, SqlTransaction transaction, int orderId, DataTable details)
+        {
+            const string sql =
+                "INSERT INTO [Order Details] (OrderID, ProductID, UnitPrice, Quantity, Discount) " +
+                "VALUES (@OrderID, @ProductID, @UnitPrice, @Quantity, @Discount)";
+
+            foreach (DataRow row in details.Rows)
+            {
+                if (row.RowState == DataRowState.Deleted)
+                {
+                    continue;
+                }
+
+                using (SqlCommand command = new SqlCommand(sql, connection, transaction))
+                {
+                    command.Parameters.AddWithValue("@OrderID", orderId);
+                    command.Parameters.AddWithValue("@ProductID", row["ProductID"]);
+                    command.Parameters.AddWithValue("@UnitPrice", row["UnitPrice"]);
+                    command.Parameters.AddWithValue("@Quantity", row["Quantity"]);
+                    command.Parameters.AddWithValue("@Discount", row["Discount"]);
+                    command.ExecuteNonQuery();
+                }
+            }
+        }
+
+        /// <summary>
         /// 受注情報（Orders テーブル）を UPDATE する。
         /// </summary>
         private static void UpdateOrderHeader(SqlConnection connection, SqlTransaction transaction, DataRow row)
@@ -122,22 +211,31 @@ namespace NorthwindWinForms
 
             using (SqlCommand command = new SqlCommand(sql, connection, transaction))
             {
-                command.Parameters.AddWithValue("@CustomerID", row["CustomerID"]);
-                command.Parameters.AddWithValue("@EmployeeID", row["EmployeeID"]);
-                command.Parameters.AddWithValue("@OrderDate", row["OrderDate"]);
-                command.Parameters.AddWithValue("@RequiredDate", row["RequiredDate"]);
-                command.Parameters.AddWithValue("@ShippedDate", row["ShippedDate"]);
-                command.Parameters.AddWithValue("@ShipVia", row["ShipVia"]);
-                command.Parameters.AddWithValue("@Freight", row["Freight"]);
-                command.Parameters.AddWithValue("@ShipName", row["ShipName"]);
-                command.Parameters.AddWithValue("@ShipAddress", row["ShipAddress"]);
-                command.Parameters.AddWithValue("@ShipCity", row["ShipCity"]);
-                command.Parameters.AddWithValue("@ShipRegion", row["ShipRegion"]);
-                command.Parameters.AddWithValue("@ShipPostalCode", row["ShipPostalCode"]);
-                command.Parameters.AddWithValue("@ShipCountry", row["ShipCountry"]);
+                AddHeaderParameters(command, row);
                 command.Parameters.AddWithValue("@OrderID", row["OrderID"]);
                 command.ExecuteNonQuery();
             }
+        }
+
+        /// <summary>
+        /// 受注ヘッダの共通パラメータ（OrderID を除く）をコマンドに追加する。
+        /// INSERT / UPDATE の双方で使用する。
+        /// </summary>
+        private static void AddHeaderParameters(SqlCommand command, DataRow row)
+        {
+            command.Parameters.AddWithValue("@CustomerID", row["CustomerID"]);
+            command.Parameters.AddWithValue("@EmployeeID", row["EmployeeID"]);
+            command.Parameters.AddWithValue("@OrderDate", row["OrderDate"]);
+            command.Parameters.AddWithValue("@RequiredDate", row["RequiredDate"]);
+            command.Parameters.AddWithValue("@ShippedDate", row["ShippedDate"]);
+            command.Parameters.AddWithValue("@ShipVia", row["ShipVia"]);
+            command.Parameters.AddWithValue("@Freight", row["Freight"]);
+            command.Parameters.AddWithValue("@ShipName", row["ShipName"]);
+            command.Parameters.AddWithValue("@ShipAddress", row["ShipAddress"]);
+            command.Parameters.AddWithValue("@ShipCity", row["ShipCity"]);
+            command.Parameters.AddWithValue("@ShipRegion", row["ShipRegion"]);
+            command.Parameters.AddWithValue("@ShipPostalCode", row["ShipPostalCode"]);
+            command.Parameters.AddWithValue("@ShipCountry", row["ShipCountry"]);
         }
 
         /// <summary>

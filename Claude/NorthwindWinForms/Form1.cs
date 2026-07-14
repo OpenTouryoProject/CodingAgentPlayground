@@ -38,7 +38,15 @@ namespace NorthwindWinForms
             // 明細操作イベント（フェーズ5）
             this.btnAddDetail.Click += btnAddDetail_Click;
             this.dgvDetails.CellContentClick += dgvDetails_CellContentClick;
+
+            // 保存・キャンセル（フェーズ6）
+            this.btnCreate.Click += btnCreate_Click;
+            this.btnUpdate.Click += btnUpdate_Click;
+            this.btnCancel.Click += btnCancel_Click;
         }
+
+        // 編集モード（true）/ 照会モード（false）
+        private bool _editable = true;
 
         // ---- フォームロード（ステップ3-1, 3-2, 3-3） ----
 
@@ -166,6 +174,9 @@ namespace NorthwindWinForms
 
                 // ステップ3-3: 合計金額の計算と表示
                 RecalculateTotals();
+
+                // 読み込み後は編集モードにする
+                SetEditable(true);
             }
             finally
             {
@@ -398,6 +409,10 @@ namespace NorthwindWinForms
             {
                 return;
             }
+            if (!_editable)
+            {
+                return;
+            }
 
             DialogResult result = MessageBox.Show(
                 "この明細行を削除しますか？", "削除確認",
@@ -460,6 +475,219 @@ namespace NorthwindWinForms
             int id;
             int.TryParse(txtOrderId.Text.Trim(), out id);
             return id;
+        }
+
+        // ---- フェーズ6: 保存・キャンセル処理 ----
+
+        // ステップ6-2: 作成ボタンクリック（新規登録）
+        private void btnCreate_Click(object sender, EventArgs e)
+        {
+            if (_orderTable == null || _orderTable.Rows.Count == 0)
+            {
+                Warn("先に受注を読み込んでください。");
+                return;
+            }
+            if (!ValidateInput())
+            {
+                return;
+            }
+
+            try
+            {
+                dgvDetails.EndEdit();
+                WriteFormToOrderRow(_orderTable.Rows[0]);
+
+                int newOrderId = DbOrder.InsertOrder(_orderTable.Rows[0], _orderDetails);
+
+                MessageBox.Show("受注を作成しました。新しい受注ID: " + newOrderId, "作成完了",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                // 作成した受注を読み込んで表示（編集モードのまま）
+                txtOrderId.Text = newOrderId.ToString();
+                LoadOrder();
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex);
+            }
+        }
+
+        // ステップ6-3: 更新ボタンクリック
+        private void btnUpdate_Click(object sender, EventArgs e)
+        {
+            if (_orderTable == null || _orderTable.Rows.Count == 0)
+            {
+                Warn("先に受注を読み込んでください。");
+                return;
+            }
+            if (!ValidateInput())
+            {
+                return;
+            }
+
+            try
+            {
+                dgvDetails.EndEdit();
+                WriteFormToOrderRow(_orderTable.Rows[0]);
+
+                DbOrder.UpdateOrder(_orderTable.Rows[0], _orderDetails);
+
+                MessageBox.Show("受注を更新しました。", "更新完了",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+
+                // 保存後の状態を再読込し、照会モード（読み取り専用）に遷移
+                LoadOrder();
+                SetEditable(false);
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex);
+            }
+        }
+
+        // ステップ6-4: キャンセルボタンクリック
+        private void btnCancel_Click(object sender, EventArgs e)
+        {
+            DialogResult result = MessageBox.Show(
+                "変更を破棄して照会モードに戻りますか？", "キャンセル確認",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (result != DialogResult.Yes)
+            {
+                return;
+            }
+
+            try
+            {
+                // 変更を破棄するため再読込し、照会モード（読み取り専用）に遷移
+                LoadOrder();
+                SetEditable(false);
+            }
+            catch (Exception ex)
+            {
+                ShowError(ex);
+            }
+        }
+
+        // ステップ6-1: 入力検証
+        private bool ValidateInput()
+        {
+            if (cmbCustomer.SelectedIndex < 0 || cmbCustomer.SelectedValue == null)
+            {
+                Warn("顧客を選択してください。");
+                return false;
+            }
+            if (cmbEmployee.SelectedIndex < 0 || cmbEmployee.SelectedValue == null)
+            {
+                Warn("従業員を選択してください。");
+                return false;
+            }
+
+            // 運送料（入力があれば 0 以上の数値）
+            if (!string.IsNullOrWhiteSpace(txtFreight.Text))
+            {
+                decimal freight;
+                if (!decimal.TryParse(txtFreight.Text.Trim(), out freight) || freight < 0)
+                {
+                    Warn("運送料は 0 以上の数値を入力してください。");
+                    return false;
+                }
+            }
+
+            dgvDetails.EndEdit();
+
+            int detailCount = 0;
+            if (_orderDetails != null)
+            {
+                foreach (DataRow row in _orderDetails.Rows)
+                {
+                    if (row.RowState == DataRowState.Deleted)
+                    {
+                        continue;
+                    }
+                    detailCount++;
+
+                    if (row["ProductID"] == DBNull.Value)
+                    {
+                        Warn("商品が未選択の明細があります。");
+                        return false;
+                    }
+                    if (Convert.ToInt32(row["Quantity"]) <= 0)
+                    {
+                        Warn("数量は 1 以上を入力してください。");
+                        return false;
+                    }
+                    double discount = Convert.ToDouble(row["Discount"]);
+                    if (discount < 0 || discount > 1)
+                    {
+                        Warn("割引は 0 ～ 1 の範囲で入力してください。");
+                        return false;
+                    }
+                    if (Convert.ToDecimal(row["UnitPrice"]) < 0)
+                    {
+                        Warn("単価は 0 以上を入力してください。");
+                        return false;
+                    }
+                }
+            }
+
+            if (detailCount < 1)
+            {
+                Warn("明細を 1 件以上入力してください。");
+                return false;
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// フォームの入力値を受注 DataRow に書き戻す。
+        /// </summary>
+        private void WriteFormToOrderRow(DataRow row)
+        {
+            row["CustomerID"] = ObjOrNull(cmbCustomer.SelectedValue);
+            row["EmployeeID"] = ObjOrNull(cmbEmployee.SelectedValue);
+            row["ShipVia"] = ObjOrNull(cmbShipper.SelectedValue);
+            row["OrderDate"] = DateOrNull(dtpOrderDate);
+            row["RequiredDate"] = DateOrNull(dtpRequiredDate);
+            row["ShippedDate"] = DateOrNull(dtpShippedDate);
+            row["ShipName"] = StrOrNull(txtShipName.Text);
+            row["ShipAddress"] = StrOrNull(txtShipAddress.Text);
+            row["ShipCity"] = StrOrNull(txtShipCity.Text);
+            row["ShipRegion"] = StrOrNull(txtShipRegion.Text);
+            row["ShipPostalCode"] = StrOrNull(txtShipPostalCode.Text);
+            row["ShipCountry"] = StrOrNull(txtShipCountry.Text);
+            row["Freight"] = string.IsNullOrWhiteSpace(txtFreight.Text)
+                ? (object)DBNull.Value
+                : Convert.ToDecimal(txtFreight.Text.Trim());
+        }
+
+        /// <summary>
+        /// 編集モード / 照会モード（読み取り専用）を切り替える。
+        /// </summary>
+        private void SetEditable(bool editable)
+        {
+            _editable = editable;
+
+            cmbCustomer.Enabled = editable;
+            cmbEmployee.Enabled = editable;
+            cmbShipper.Enabled = editable;
+            dtpOrderDate.Enabled = editable;
+            dtpRequiredDate.Enabled = editable;
+            dtpShippedDate.Enabled = editable;
+
+            txtShipName.ReadOnly = !editable;
+            txtShipAddress.ReadOnly = !editable;
+            txtShipCity.ReadOnly = !editable;
+            txtShipRegion.ReadOnly = !editable;
+            txtShipPostalCode.ReadOnly = !editable;
+            txtShipCountry.ReadOnly = !editable;
+            txtFreight.ReadOnly = !editable;
+
+            dgvDetails.ReadOnly = !editable;
+            btnAddDetail.Enabled = editable;
+            btnCreate.Enabled = editable;
+            btnUpdate.Enabled = editable;
+            btnCancel.Enabled = editable;
         }
 
         // ---- ヘルパー ----
@@ -528,6 +756,27 @@ namespace NorthwindWinForms
         {
             MessageBox.Show(ex.Message, "エラー",
                 MessageBoxButtons.OK, MessageBoxIcon.Error);
+        }
+
+        private void Warn(string message)
+        {
+            MessageBox.Show(message, "入力エラー",
+                MessageBoxButtons.OK, MessageBoxIcon.Warning);
+        }
+
+        private static object ObjOrNull(object value)
+        {
+            return value == null ? (object)DBNull.Value : value;
+        }
+
+        private static object DateOrNull(DateTimePicker picker)
+        {
+            return picker.Checked ? (object)picker.Value : DBNull.Value;
+        }
+
+        private static object StrOrNull(string text)
+        {
+            return string.IsNullOrWhiteSpace(text) ? (object)DBNull.Value : text.Trim();
         }
     }
 }
