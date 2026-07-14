@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Data;
 using System.Windows.Forms;
 
@@ -33,6 +34,10 @@ namespace NorthwindWinForms
             this.dgvDetails.CurrentCellDirtyStateChanged += dgvDetails_CurrentCellDirtyStateChanged;
             this.dgvDetails.CellValueChanged += dgvDetails_CellValueChanged;
             this.dgvDetails.DataError += dgvDetails_DataError;
+
+            // 明細操作イベント（フェーズ5）
+            this.btnAddDetail.Click += btnAddDetail_Click;
+            this.dgvDetails.CellContentClick += dgvDetails_CellContentClick;
         }
 
         // ---- フォームロード（ステップ3-1, 3-2, 3-3） ----
@@ -312,6 +317,13 @@ namespace NorthwindWinForms
                 UpdateProductInfo(e.RowIndex);
                 RecalculateTotals();
             }
+            // ステップ5-3: 数量・割引・単価変更 → 合計再計算
+            else if (e.ColumnIndex == colQuantity.Index
+                  || e.ColumnIndex == colDiscount.Index
+                  || e.ColumnIndex == colUnitPrice.Index)
+            {
+                RecalculateTotals();
+            }
         }
 
         /// <summary>
@@ -343,6 +355,111 @@ namespace NorthwindWinForms
         {
             // ComboBox セルの一時的な値不一致などはユーザーへのダイアログを抑止
             e.ThrowException = false;
+        }
+
+        // ---- フェーズ5: 明細操作イベント ----
+
+        // ステップ5-1: 明細追加ボタンクリック
+        private void btnAddDetail_Click(object sender, EventArgs e)
+        {
+            if (_orderDetails == null)
+            {
+                MessageBox.Show("先に受注を読み込んでください。", "情報",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            // 明細は (OrderID, ProductID) が主キーのため、既存明細で未使用の商品を
+            // 既定選択にする（先頭固定だと連続追加でキー重複エラーになる）
+            DataRow defaultProduct = GetFirstUnusedProduct();
+            if (defaultProduct == null)
+            {
+                MessageBox.Show("追加できる商品がありません（全商品が明細に登録済みです）。", "情報",
+                    MessageBoxButtons.OK, MessageBoxIcon.Information);
+                return;
+            }
+
+            DataRow newRow = _orderDetails.NewRow();
+            newRow["OrderID"] = GetCurrentOrderId();
+            newRow["ProductID"] = defaultProduct["ProductID"];
+            newRow["UnitPrice"] = defaultProduct["UnitPrice"];
+            newRow["Quantity"] = (short)1;
+            newRow["Discount"] = 0f;
+
+            _orderDetails.Rows.Add(newRow);
+
+            RecalculateTotals();
+        }
+
+        // ステップ5-2: 明細削除ボタンクリック（行内の削除ボタン列）
+        private void dgvDetails_CellContentClick(object sender, DataGridViewCellEventArgs e)
+        {
+            if (e.RowIndex < 0 || e.ColumnIndex != colDelete.Index)
+            {
+                return;
+            }
+
+            DialogResult result = MessageBox.Show(
+                "この明細行を削除しますか？", "削除確認",
+                MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+            if (result != DialogResult.Yes)
+            {
+                return;
+            }
+
+            // 対象行を削除（既存行は RowState=Deleted となり、更新時に DELETE される）
+            DataRowView drv = dgvDetails.Rows[e.RowIndex].DataBoundItem as DataRowView;
+            if (drv != null)
+            {
+                drv.Row.Delete();
+            }
+
+            RecalculateTotals();
+        }
+
+        /// <summary>
+        /// 現在の明細（削除済みを除く）で未使用の商品を、商品マスタの先頭から探して返す。
+        /// 全商品が使用済みの場合は null。
+        /// </summary>
+        private DataRow GetFirstUnusedProduct()
+        {
+            if (_products == null || _products.Rows.Count == 0)
+            {
+                return null;
+            }
+
+            HashSet<int> usedProductIds = new HashSet<int>();
+            if (_orderDetails != null)
+            {
+                foreach (DataRow row in _orderDetails.Rows)
+                {
+                    if (row.RowState == DataRowState.Deleted)
+                    {
+                        continue;
+                    }
+                    usedProductIds.Add(Convert.ToInt32(row["ProductID"]));
+                }
+            }
+
+            foreach (DataRow product in _products.Rows)
+            {
+                if (!usedProductIds.Contains(Convert.ToInt32(product["ProductID"])))
+                {
+                    return product;
+                }
+            }
+            return null;
+        }
+
+        private int GetCurrentOrderId()
+        {
+            if (_orderTable != null && _orderTable.Rows.Count > 0)
+            {
+                return Convert.ToInt32(_orderTable.Rows[0]["OrderID"]);
+            }
+            int id;
+            int.TryParse(txtOrderId.Text.Trim(), out id);
+            return id;
         }
 
         // ---- ヘルパー ----
