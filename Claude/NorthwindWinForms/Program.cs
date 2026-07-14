@@ -16,9 +16,9 @@ namespace NorthwindWinForms
         {
             Application.EnableVisualStyles();
             Application.SetCompatibleTextRenderingDefault(false);
-            // フェーズ0: DB接続疎通確認用の Form0 を起動する。
-            // （フェーズ2以降で new Form1() に戻す）
-            Application.Run(new Form0());
+            // フェーズ2以降: 受注詳細画面（編集モード）の Form1 を起動する。
+            // （DB接続疎通確認は Form0 で実施可能）
+            Application.Run(new Form1());
         }
     }
 }
