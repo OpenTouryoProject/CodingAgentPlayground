@@ -1,0 +1,1 @@
+https://techinfoofmicrosofttech.osscons.jp/index.php?GitHub%20Copilot%20Coding%20Agent#f570cf06
