@@ -25,6 +25,14 @@ namespace NorthwindWinForms
 
             this.Load += Form1_Load;
             this.btnLoad.Click += btnLoad_Click;
+
+            // ドロップダウン変更イベント（フェーズ4）
+            this.cmbCustomer.SelectedIndexChanged += cmbCustomer_SelectedIndexChanged;
+            this.cmbEmployee.SelectedIndexChanged += cmbEmployee_SelectedIndexChanged;
+            this.cmbShipper.SelectedIndexChanged += cmbShipper_SelectedIndexChanged;
+            this.dgvDetails.CurrentCellDirtyStateChanged += dgvDetails_CurrentCellDirtyStateChanged;
+            this.dgvDetails.CellValueChanged += dgvDetails_CellValueChanged;
+            this.dgvDetails.DataError += dgvDetails_DataError;
         }
 
         // ---- フォームロード（ステップ3-1, 3-2, 3-3） ----
@@ -33,7 +41,16 @@ namespace NorthwindWinForms
         {
             try
             {
-                LoadMasters();
+                // マスタの DataSource 設定でも SelectedIndexChanged が発火するため抑制
+                _loading = true;
+                try
+                {
+                    LoadMasters();
+                }
+                finally
+                {
+                    _loading = false;
+                }
 
                 // 受注IDが未指定の場合は動作確認用に既定値を設定
                 if (string.IsNullOrWhiteSpace(txtOrderId.Text))
@@ -119,6 +136,9 @@ namespace NorthwindWinForms
                 SetComboValue(cmbEmployee, order["EmployeeID"]);
                 SetComboValue(cmbShipper, order["ShipVia"]);
 
+                // 選択に対応した関連情報（電話・住所・職位・内線）を表示
+                RefreshRelatedInfo();
+
                 // 日付（null は DateTimePicker のチェックを外して表現）
                 SetDateValue(dtpOrderDate, order["OrderDate"]);
                 SetDateValue(dtpRequiredDate, order["RequiredDate"]);
@@ -187,6 +207,144 @@ namespace NorthwindWinForms
             return Math.Round(price * quantity, 2);
         }
 
+        // ---- フェーズ4: ドロップダウン変更イベント ----
+
+        /// <summary>
+        /// 顧客・従業員・配送業者の選択に対応する関連情報をまとめて更新する。
+        /// </summary>
+        private void RefreshRelatedInfo()
+        {
+            UpdateCustomerInfo();
+            UpdateEmployeeInfo();
+            UpdateShipperInfo();
+        }
+
+        // ステップ4-1: 顧客選択変更
+        private void cmbCustomer_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (_loading)
+            {
+                return;
+            }
+            UpdateCustomerInfo();
+        }
+
+        private void UpdateCustomerInfo()
+        {
+            DataRowView row = cmbCustomer.SelectedItem as DataRowView;
+            if (row == null)
+            {
+                lblCustomerPhoneValue.Text = string.Empty;
+                lblCustomerAddressValue.Text = string.Empty;
+                return;
+            }
+            lblCustomerPhoneValue.Text = ToStr(row["Phone"]);
+            lblCustomerAddressValue.Text = BuildAddress(row);
+        }
+
+        // ステップ4-2: 従業員選択変更
+        private void cmbEmployee_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (_loading)
+            {
+                return;
+            }
+            UpdateEmployeeInfo();
+        }
+
+        private void UpdateEmployeeInfo()
+        {
+            DataRowView row = cmbEmployee.SelectedItem as DataRowView;
+            if (row == null)
+            {
+                lblEmployeeTitleValue.Text = string.Empty;
+                lblEmployeeExtensionValue.Text = string.Empty;
+                return;
+            }
+            lblEmployeeTitleValue.Text = ToStr(row["Title"]);
+            lblEmployeeExtensionValue.Text = ToStr(row["Extension"]);
+        }
+
+        // ステップ4-4: 配送業者選択変更
+        private void cmbShipper_SelectedIndexChanged(object sender, EventArgs e)
+        {
+            if (_loading)
+            {
+                return;
+            }
+            UpdateShipperInfo();
+        }
+
+        private void UpdateShipperInfo()
+        {
+            DataRowView row = cmbShipper.SelectedItem as DataRowView;
+            if (row == null)
+            {
+                lblShipperPhoneValue.Text = string.Empty;
+                return;
+            }
+            lblShipperPhoneValue.Text = ToStr(row["Phone"]);
+        }
+
+        // ステップ4-3: 商品選択変更（DataGridView内）
+
+        /// <summary>
+        /// ComboBox セルの選択を即時コミットし、CellValueChanged を発火させる。
+        /// </summary>
+        private void dgvDetails_CurrentCellDirtyStateChanged(object sender, EventArgs e)
+        {
+            if (dgvDetails.IsCurrentCellDirty && dgvDetails.CurrentCell is DataGridViewComboBoxCell)
+            {
+                dgvDetails.CommitEdit(DataGridViewDataErrorContexts.Commit);
+            }
+        }
+
+        private void dgvDetails_CellValueChanged(object sender, DataGridViewCellEventArgs e)
+        {
+            if (_loading || e.RowIndex < 0)
+            {
+                return;
+            }
+
+            // 商品変更 → 選択された商品の単価・在庫を反映
+            if (e.ColumnIndex == colProduct.Index)
+            {
+                UpdateProductInfo(e.RowIndex);
+                RecalculateTotals();
+            }
+        }
+
+        /// <summary>
+        /// 指定行の商品IDに基づき、単価をマスタから反映し、在庫情報をツールチップに表示する。
+        /// </summary>
+        private void UpdateProductInfo(int rowIndex)
+        {
+            DataGridViewRow gridRow = dgvDetails.Rows[rowIndex];
+            object productIdObj = gridRow.Cells[colProduct.Name].Value;
+            if (productIdObj == null || productIdObj == DBNull.Value)
+            {
+                return;
+            }
+
+            DataRow[] found = _products.Select("ProductID = " + Convert.ToInt32(productIdObj));
+            if (found.Length == 0)
+            {
+                return;
+            }
+
+            DataRow product = found[0];
+            gridRow.Cells[colUnitPrice.Name].Value = product["UnitPrice"];
+
+            // 在庫情報は専用の表示欄がないため商品セルのツールチップに表示
+            gridRow.Cells[colProduct.Name].ToolTipText = "在庫: " + ToStr(product["UnitsInStock"]);
+        }
+
+        private void dgvDetails_DataError(object sender, DataGridViewDataErrorEventArgs e)
+        {
+            // ComboBox セルの一時的な値不一致などはユーザーへのダイアログを抑止
+            e.ThrowException = false;
+        }
+
         // ---- ヘルパー ----
 
         private void SetComboValue(ComboBox combo, object value)
@@ -217,6 +375,22 @@ namespace NorthwindWinForms
         private static string ToStr(object value)
         {
             return (value == null || value == DBNull.Value) ? string.Empty : value.ToString();
+        }
+
+        /// <summary>
+        /// 顧客行の住所関連列を連結して1つの住所文字列にする。
+        /// </summary>
+        private static string BuildAddress(DataRowView row)
+        {
+            string[] parts =
+            {
+                ToStr(row["Address"]),
+                ToStr(row["City"]),
+                ToStr(row["Region"]),
+                ToStr(row["PostalCode"]),
+                ToStr(row["Country"])
+            };
+            return string.Join(" ", Array.FindAll(parts, p => !string.IsNullOrEmpty(p)));
         }
 
         private static decimal ToDecimal(object value)
