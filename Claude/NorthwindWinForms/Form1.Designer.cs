@@ -1,4 +1,4 @@
-namespace NorthwindWinForms
+﻿namespace NorthwindWinForms
 {
     partial class Form1
     {

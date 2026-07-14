@@ -1,5 +1,6 @@
-using System;
+﻿using System;
 using System.Configuration;
+using System.Data;
 using System.Data.SqlClient;
 
 namespace NorthwindWinForms
@@ -56,6 +57,78 @@ namespace NorthwindWinForms
                 connection.Open();
                 return Convert.ToInt32(command.ExecuteScalar());
             }
+        }
+
+        /// <summary>
+        /// SELECT 文を実行し、結果を DataTable として取得する共通メソッド。
+        /// </summary>
+        /// <param name="sql">SELECT 文</param>
+        /// <param name="parameters">SQL パラメータ（省略可）</param>
+        /// <returns>結果を格納した DataTable</returns>
+        private static DataTable ExecuteQuery(string sql, params SqlParameter[] parameters)
+        {
+            DataTable table = new DataTable();
+            using (SqlConnection connection = CreateConnection())
+            using (SqlCommand command = new SqlCommand(sql, connection))
+            {
+                if (parameters != null)
+                {
+                    command.Parameters.AddRange(parameters);
+                }
+                using (SqlDataAdapter adapter = new SqlDataAdapter(command))
+                {
+                    adapter.Fill(table);
+                }
+            }
+            return table;
+        }
+
+        // ---- マスタデータ取得（ステップ1-1） ----
+
+        /// <summary>
+        /// 顧客一覧 (Customers) を取得する。ドロップダウンおよび関連情報表示に使用。
+        /// </summary>
+        public static DataTable GetCustomers()
+        {
+            const string sql =
+                "SELECT CustomerID, CompanyName, ContactName, Phone, " +
+                "       Address, City, Region, PostalCode, Country " +
+                "FROM Customers ORDER BY CompanyName";
+            return ExecuteQuery(sql);
+        }
+
+        /// <summary>
+        /// 従業員一覧 (Employees) を取得する。氏名・職位・内線番号を含む。
+        /// </summary>
+        public static DataTable GetEmployees()
+        {
+            const string sql =
+                "SELECT EmployeeID, (LastName + ' ' + FirstName) AS FullName, " +
+                "       Title, Extension " +
+                "FROM Employees ORDER BY LastName, FirstName";
+            return ExecuteQuery(sql);
+        }
+
+        /// <summary>
+        /// 商品一覧 (Products) を取得する。単価・在庫を含む。
+        /// </summary>
+        public static DataTable GetProducts()
+        {
+            const string sql =
+                "SELECT ProductID, ProductName, UnitPrice, UnitsInStock, Discontinued " +
+                "FROM Products ORDER BY ProductName";
+            return ExecuteQuery(sql);
+        }
+
+        /// <summary>
+        /// 配送業者一覧 (Shippers) を取得する。社名・電話番号を含む。
+        /// </summary>
+        public static DataTable GetShippers()
+        {
+            const string sql =
+                "SELECT ShipperID, CompanyName, Phone " +
+                "FROM Shippers ORDER BY CompanyName";
+            return ExecuteQuery(sql);
         }
     }
 }

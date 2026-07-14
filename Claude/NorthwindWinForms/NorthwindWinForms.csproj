@@ -48,6 +48,7 @@
   </ItemGroup>
   <ItemGroup>
     <Compile Include="DbHelper.cs" />
+    <Compile Include="DbOrder.cs" />
     <Compile Include="Form0.cs">
       <SubType>Form</SubType>
     </Compile>
